@@ -7,7 +7,7 @@ from linebot.exceptions import (
     InvalidSignatureError
 )
 from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage,ImageSendMessage,StickerSendMessage,FollowEvent,UnfollowEvent,
+    MessageEvent, TextMessage, TextSendMessage,ImageSendMessage,StickerSendMessage,FollowEvent,UnfollowEvent,ReplyMessageRequest
 )
 from linebot.models import *
 
@@ -37,25 +37,12 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    message_text = str(event.message.text).lower()
-    message = None
-    #event有什麼資料？詳見補充
-    if message_text == "story":
-        message = "story"
-        line_bot_api.reply_message(
-        event.reply_token,
-        message)
-    elif message_text =='add':
-        message = 'list products'
-    
-    elif message_text =='cart':
-        message = 'cart'
-
-    if message:
-        line_bot_api.reply_message(
-        event.reply_token,
-        message)
-
+    line_bot_api.reply_message(
+        ReplyMessageRequest(
+            reply_token=event.reply_token,
+            messages=[TextMessage(text=event.message.text)]
+        )
+    )
 
 
 if __name__ == "__main__":
