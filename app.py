@@ -10,6 +10,9 @@ from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage,ImageSendMessage,StickerSendMessage,FollowEvent,UnfollowEvent,
 )
 from linebot.models import *
+from database import db_session
+from models.user import Users
+from database import db_session, init_db
 
 app = Flask(__name__)
 
@@ -20,6 +23,19 @@ handler = WebhookHandler('9adf1e3e91823a6cf44096f7cf71c90e')
 
 app = Flask(__name__)
 
+#建立或取得user
+def get_or_create_user(user_id):
+    #從id=user_id先搜尋有沒有這個user，如果有的話就會直接跳到return
+    user = db_session.query(Users).filter_by(id=user_id).first()
+    #沒有的話就會透過line_bot_api來取得用戶資訊
+    if not user:
+        profile = line_bot_api.get_profile(user_id)
+        #然後再建立user並且存入到資料庫當中
+        user = Users(id=user_id, nick_name=profile.display_name, image_url=profile.picture_url)
+        db_session.add(user)
+        db_session.commit()
+
+    return user
 def about_us_event(event):
     emoji = [
             {
@@ -73,6 +89,8 @@ def callback():
 # 處理訊息
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
+    #event有什麼資料？詳見補充
+    get_or_create_user(event.source.user_id)
     profile = line_bot_api.get_profile(event.source.user_id)
     uid = profile.user_id #使用者ID
     message_text = str(event.message.text).lower()
@@ -81,7 +99,8 @@ def handle_message(event):
     if message_text == '@使用說明':
         about_us_event(event)
         
-    ################################ 股票區 ######################################
+    line_bot_api.reply_message(
+        event.reply_token, TextSendMessage(text='Hi! Welcome to LSTORE.'))
     if event.message.text == "股價查詢":
         line_bot_api.push_message(uid,TextSendMessage("請輸入#加股票代號....."))
 
@@ -101,10 +120,6 @@ def handle_follow(event):
         TextSendMessage(text=welcome_msg))
 
 
-@handler.add(UnfollowEvent)
-def handle_unfollow(event):
-    print(event)        
-    
-
 if __name__ == "__main__":
+    init_db()
     app.run()
