@@ -34,12 +34,12 @@ def about_us_event(event):
             }
         ]
 
-    text_message = TextSendMessage(text='''$ Master Finance $
-Hello! 您好，歡迎您成為 Master Finance 的好友！
+    text_message = TextSendMessage(text='''$ Master RenderP $
+Hello! 您好，歡迎您成為 Master RenderP 的好友！
 
-我是Master 財經小幫手 
+我是Master 支付小幫手 
 
--這裡有股票，匯率資訊喔~
+-這裡有商城，還可以購物喔~
 -直接點選下方【圖中】選單功能
 
 -期待您的光臨！''', emojis=emoji)
