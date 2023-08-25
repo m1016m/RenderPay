@@ -40,25 +40,17 @@ def handle_message(event):
     message = None
     #event有什麼資料？詳見補充
     if message_text in ["what is your story?", "story"]:
-        message = [
-            ImageSendMessage(
-                original_content_url='https://i.imgur.com/DKzbk3l.jpg',
-                preview_image_url='https://i.imgur.com/DKzbk3l.jpg'
-            ), StickerSendMessage(
-                package_id='11537',
-                sticker_id='52002734'
-            )
-        ]
-
+        message = "story"
     elif message_text in ['i am ready to order.', 'add']:
-        message = TextSendMessage(text='list products')
-
+        message = 'list products'
+    
     elif message_text in ['my cart', 'cart']:
-        message = TextSendMessage(text='cart')
+        message = 'cart'
 
     if message:
         line_bot_api.reply_message(
         event.reply_token,
-        message)
+        TextSendMessage(text=message))
+
 if __name__ == "__main__":
     app.run()
