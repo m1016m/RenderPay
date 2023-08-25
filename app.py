@@ -39,18 +39,23 @@ def handle_message(event):
     message_text = str(event.message.text).lower()
     message = None
     #event有什麼資料？詳見補充
-    if message_text in ["what is your story?", "story"]:
+    if message_text == "story":
         message = "story"
-    elif message_text in ['i am ready to order.', 'add']:
+        line_bot_api.reply_message(
+        event.reply_token,
+        message)
+    elif message_text =='add':
         message = 'list products'
     
-    elif message_text in ['my cart', 'cart']:
+    elif message_text =='cart':
         message = 'cart'
 
     if message:
         line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text=message))
+        message)
+
+
 
 if __name__ == "__main__":
     app.run()
