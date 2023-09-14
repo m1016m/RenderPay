@@ -75,6 +75,8 @@ def about_us_event(event):
 
     text_message = TextSendMessage(text='''$ Master SPA $
 專業中醫推拿出身，融合東西方按摩手法
+                                   
+預約請輸入：@預約服務                                  
 
 -嚴格把關：所有用品皆有消毒或採一次用品。
 

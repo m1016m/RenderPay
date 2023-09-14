@@ -80,7 +80,7 @@ def handle_message(event):
         if message_text in ['*data', '*d']:
             list_reservation_event(event)
 
-    elif message_text in ['@優惠商品','再去逛逛']:
+    elif message_text in ['我想訂購商品','再去逛逛']:
         message=Products.list_all(event)
 
     elif "請輸入購買數量" in message_text:
