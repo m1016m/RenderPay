@@ -1,88 +1,35 @@
-from flask import Flask, request, abort
-
-from linebot import (
-    LineBotApi, WebhookHandler
-)
-from linebot.exceptions import (
-    InvalidSignatureError
-)
-from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage,ImageSendMessage,StickerSendMessage,FollowEvent,UnfollowEvent,
-)
+from flask import Flask,request,abort
+from database import db_session, init_db
+from extensions import db, migrate
+from events.service import *
+from events.basic import *
+from events.admin import *
 from linebot.models import *
-from models.database import db_session
-from models.user import Users
-
-from models.product import Products
-from sqlalchemy.sql.expression import text
-from models.database import db_session, init_db
-
-from models.product import Products
-from models.cart import Cart
-from models.order import Orders
-from models.item import Items
+from line_bot_api import *
 from config import Config
+from models.cart import *
+from models.user import User    
+from models.product import Products
+
+from models.item import Items
+from models.order import Orders
 from models.linepay import LinePay
-from urllib.parse import parse_qsl
+
+import os
 import uuid
-
-
 app = Flask(__name__)
+#admin: !QAZ2wsx資料庫的帳號和密碼
+#讓程式自己去判斷如果是測試端就會使用APP_SETTINGS
+app.config.from_object(os.environ.get('APP_SETTINGS', 'config.DevConfig'))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://m1016m:aynpduYUgaD2yAVFd8JLBgj2TPMPSWGD@dpg-cjbor97db61s73aeaou0-a.singapore-postgres.render.com/mspa_d63k'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db.app = app 
+db.init_app(app)
+migrate.init_app(app, db)
 
 
-line_bot_api = LineBotApi(Config.CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(Config.CHANNEL_SECRET)
+#callback
 
-# 1654645649
-# 89d3d4609dc0feffb7971e8c39c4b221
-app = Flask(__name__)
-
-#建立或取得user
-def get_or_create_user(user_id):
-    #從id=user_id先搜尋有沒有這個user，如果有的話就會直接跳到return
-    user = db_session.query(Users).filter_by(id=user_id).first()
-    #沒有的話就會透過line_bot_api來取得用戶資訊
-    if not user:
-        profile = line_bot_api.get_profile(user_id)
-        #然後再建立user並且存入到資料庫當中
-        user = Users(id=user_id, nick_name=profile.display_name, image_url=profile.picture_url)
-        db_session.add(user)
-        db_session.commit()
-
-    return user
-def about_us_event(event):
-    emoji = [
-            {
-                "index": 0,
-                "productId": "5ac21184040ab15980c9b43a",
-                "emojiId": "225"
-            },
-            {
-                "index": 17,
-                "productId": "5ac21184040ab15980c9b43a",
-                "emojiId": "225"
-            }
-        ]
-
-    text_message = TextSendMessage(text='''$ Master RenderP $
-Hello! 您好，歡迎您成為 Master RenderP 的好友！
-
-我是Master 支付小幫手 
-
--這裡有商城，還可以購物喔~
--直接點選下方【圖中】選單功能
-
--期待您的光臨！''', emojis=emoji)
-
-    sticker_message = StickerSendMessage(
-        package_id='8522',
-        sticker_id='16581271'
-    )
-    line_bot_api.reply_message(
-        event.reply_token,
-        [text_message, sticker_message])
-    
-# 監聽所有來自 /callback 的 Post Request
 @app.route("/callback", methods=['POST'])
 def callback():
     # get X-Line-Signature header value
@@ -96,80 +43,99 @@ def callback():
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
+        print("Invalid signature. Please check your channel access token/channel secret.")
         abort(400)
 
     return 'OK'
 
-# 處理訊息
-@handler.add(MessageEvent, message=TextMessage)
+@handler.add(MessageEvent,message=TextMessage)
 def handle_message(event):
-    #event有什麼資料？詳見補充
-    get_or_create_user(event.source.user_id)
-    
     message_text = str(event.message.text).lower()
-    cart =  Cart(user_id = event.source.user_id)
-    message = None
-    ######################## 使用說明 選單 油價查詢################################
-    if message_text == '@使用說明':
+    user = User.query.filter(User.line_id == event.source.user_id).first()#取得user的第一筆資料
+    #如果沒有user資料時，才會透過api去取得
+    if not user:
+
+        profile = line_bot_api.get_profile(event.source.user_id)#Line API 中說明get_profile可以取得的資料
+        print(profile.display_name)
+        print(profile.user_id)#相同的好以會因為不同的profile 而有不同的user_id
+
+        user = User(profile.user_id, profile.display_name, profile.picture_url)
+        db.session.add(user)
+        db.session.commit()
+
+    print(user.id)
+    print(user.line_id)
+    print(user.display_name)
+
+    cart = Cart(user_id=event.source.user_id)
+
+    if message_text == '@關於我們':
         about_us_event(event)
-    elif message_text in ['我想訂購商品', 'add']:
-        message = Products.list_all()
-    #當user要訂購時就會執行這段程式
-    elif "i'd like to have" in message_text:
+    elif message_text =='@預約服務':
+        service_category_event(event)
 
-            product_name = message_text.split(',')[0]#利用split(',')拆解並取得第[0]個位置的值
-            # 例如 Coffee,i'd like to have經過split(',')拆解並取得第[0]個位置後就是 Coffee
-            num_item = message_text.rsplit(':')[1]#同理產品就用(':')拆解取得第[1]個位置的值
-            #資料庫搜尋是否有這個產品名稱
-            product = db_session.query(Products).filter(Products.name.ilike(product_name)).first()
-            #如果有這個產品名稱就會加入
-            if product:
+    elif message_text.startswith('*'):
+        if event.source.user_id not in ['U3239fa11f07a7a16e177edf9f6e19918']:
+            return
+        if message_text in ['*data', '*d']:
+            list_reservation_event(event)
 
-                cart.add(product=product_name, num=num_item)
-                #然後利用confirm_template的格式詢問用戶是否還要加入？
-                confirm_template = ConfirmTemplate(
-                    text='Sure, {} {}, anything else?'.format(num_item, product_name),
-                    actions=[
-                        MessageAction(label='Add', text='add'),
-                        MessageAction(label="That's it", text="That's it")
-                    ])
+    elif message_text in ['@優惠商品','再去逛逛']:
+        message=Products.list_all(event)
 
-                message = TemplateSendMessage(alt_text='anything else?', template=confirm_template)
-
-            else:
-                #如果沒有找到產品名稱就會回給用戶沒有這個產品
-                message = TextSendMessage(text="Sorry, We don't have {}.".format(product_name))
-
-            print(cart.bucket())
-    elif message_text in ['my cart', 'cart', "that's it"]:#當出現'my cart', 'cart', "that's it"時
+    elif "請輸入購買數量" in message_text:
+        message = cart.ordering(event)
+    
+    elif message_text in ['@購物車','my cart', 'cart', "查看購物車"]:#當出現'my cart', 'cart', "that's it"時
 
         if cart.bucket():#當購物車裡面有東西時
             message = cart.display()#就會使用 display()顯示購物車內容
         else:
-            message = TextSendMessage(text='Your cart is empty now.')
-    elif message_text == 'empty cart':
+            message = TextSendMessage(text='您的購物並沒有任何商品！')
+    elif message_text == '清空購物車':
 
         cart.reset()
 
-        message = TextSendMessage(text='Your cart is empty now.')
+        message = TextSendMessage(text='您的購物車已清空.')
+    
+
     if message:
         line_bot_api.reply_message(
         event.reply_token,
         message) 
+
+        
+
+
+#接收postback的訊息
+#parse_qsl解析data中的資料
 @handler.add(PostbackEvent)
 def handle_postback(event):
-    data = dict(parse_qsl(event.postback.data))#先將postback中的資料轉成字典
+    #把傳進來的event儲存在postback.data中再利用parse_qsl解析data中的資料然漚轉換成dict
+    data = dict(parse_qsl(event.postback.data))
+    #建立好def service_event(event) function後要來這裡加上判斷式
+    #直接呼叫service_event(event)
 
-    action = data.get('action')#再get action裡面的值
-
-    if action == 'checkout':#如果action裡面的值是checkout的話才會執行結帳的動作
+    if data.get('action') == 'service':
+        service_event(event)
+    elif data.get('action') == 'select_date':
+        service_select_date_event(event)
+    elif data.get('action') == 'select_time':
+        service_select_time_event(event)
+    elif data.get('action') == 'confirm':
+        service_confirm_event(event)
+    elif data.get('action') == 'confirmed':
+        service_confirmed_event(event)
+    elif data.get('action') == 'cancel':
+        service_cancel_event(event)
+    elif data.get('action') == 'checkout':
 
         user_id = event.source.user_id#取得user_id
 
         cart = Cart(user_id=user_id)#透過user_id取得購物車
 
         if not cart.bucket():#判斷購物車裡面有沒有資料，沒有就回傳購物車是空的
-            message = TextSendMessage(text='Your cart is empty now.')
+            message = TextSendMessage(text='您的購物並沒有任何商品！')
 
             line_bot_api.reply_message(event.reply_token, [message])
 
@@ -231,6 +197,8 @@ def handle_postback(event):
         line_bot_api.reply_message(event.reply_token, [message])
 
     return 'OK'
+
+    #用get()來取得data中的資料，好處是如果備有data時會顯示None，而不會出線錯物
 @app.route("/confirm")
 def confirm():
     transaction_id = request.args.get('transactionId')
@@ -248,6 +216,30 @@ def confirm():
         line_bot_api.push_message(to=order.user_id, messages=message)
 
         return '<h1>Your payment is successful. thanks for your purchase.</h1>'
+
+################## 解除封鎖 ####################
+@handler.add(FollowEvent)
+def handle_follow(event):
+    welcome_msg = """Hello! 您好，歡迎您成為 Master Finance 的好友！
+
+我是Master 財經小幫手 
+
+-這裡有股票，匯率資訊喔~
+-直接點選下方【圖中】選單功能
+
+-期待您的光臨！"""
+
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=welcome_msg))
+
+
+################## 顯示封鎖 ####################
+@handler.add(UnfollowEvent)
+def handle_unfollow(event):
+    print(event)
+
+
 
 #初始化產品資訊
 @app.before_first_request
@@ -272,26 +264,9 @@ def init_products():
         #記得要from models.product import Products在app.py
         
         
-            
-            
 
 
-@handler.add(FollowEvent)
-def handle_follow(event):
-    welcome_msg = """Hello! 您好，歡迎您成為 Master Finance 的好友！
 
-我是Master 財經小幫手 
-
--這裡有股票，匯率資訊喔~
--直接點選下方【圖中】選單功能
-
--期待您的光臨！"""
-
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=welcome_msg))
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     init_products()
     app.run()
